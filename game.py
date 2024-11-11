@@ -62,12 +62,11 @@ class Laser(pygame.sprite.Sprite):
         elif self.direction == "down":
             self.rect.y += self.speed
 
-# Create AI spaceship class with fuzzy logic
 class AISpaceship(Spaceship):
     def __init__(self, x, y):
         super().__init__(x, y, GREEN)
         self.speed = 0
-        self.fire_rate = 200  # AI fires every 200 frames (adjust this for slower firing)
+        self.fire_rate = 175  # AI fires more frequently (every 150 frames)
         self.last_shot = 0
 
     def update(self, player_x, player_lasers):
@@ -93,15 +92,15 @@ class AISpaceship(Spaceship):
     def fuzzy_logic(self, distance):
         # Define fuzzy sets for distance
         distance_input = ctrl.Antecedent(np.arange(-width // 2, width // 2, 1), 'distance')
-        ai_speed_output = ctrl.Consequent(np.arange(-5, 6, 1), 'ai_speed')
+        ai_speed_output = ctrl.Consequent(np.arange(-8, 9, 1), 'ai_speed')
 
         distance_input['close'] = fuzz.trimf(distance_input.universe, [-width // 2, 0, 0])
         distance_input['medium'] = fuzz.trimf(distance_input.universe, [0, 0, width // 2])
         distance_input['far'] = fuzz.trimf(distance_input.universe, [0, width // 2, width // 2])
 
-        ai_speed_output['move_left'] = fuzz.trimf(ai_speed_output.universe, [-5, -2, 0])
-        ai_speed_output['no_move'] = fuzz.trimf(ai_speed_output.universe, [-1, 0, 1])
-        ai_speed_output['move_right'] = fuzz.trimf(ai_speed_output.universe, [0, 2, 5])
+        ai_speed_output['move_left'] = fuzz.trimf(ai_speed_output.universe, [-8, -3, 0])
+        ai_speed_output['no_move'] = fuzz.trimf(ai_speed_output.universe, [-2, 0, 2])
+        ai_speed_output['move_right'] = fuzz.trimf(ai_speed_output.universe, [0, 3, 8])
 
         # Define fuzzy rules
         rule1 = ctrl.Rule(distance_input['close'], ai_speed_output['move_left'])
@@ -122,21 +121,28 @@ class AISpaceship(Spaceship):
     def dodge_lasers(self, player_lasers):
         # AI should dodge the lasers fired by the player
         for laser in player_lasers:
-            # If laser is close to the AI spaceship
-            if laser.rect.colliderect(self.rect):
-                # AI dodges by moving in the opposite direction of the laser's position
-                if laser.rect.centerx < self.rect.centerx:
+            # Predict the laser's path
+            laser_prediction = self.predict_laser_path(laser)
+
+            # If the predicted laser path is close to the AI, dodge it
+            if abs(laser_prediction - self.rect.centerx) < 100:  # 100 pixels threshold
+                # Move in the opposite direction of the predicted landing
+                if laser_prediction < self.rect.centerx:
                     self.rect.x += self.speed  # Move right to dodge
                 else:
                     self.rect.x -= self.speed  # Move left to dodge
 
-            # Predict laser trajectory and react based on direction
-            if laser.direction == "up" and laser.rect.bottom < self.rect.top:
-                # If the laser is coming down, AI should move left or right based on trajectory
-                if laser.rect.centerx < self.rect.centerx:
-                    self.rect.x += self.speed  # Move right to dodge
-                else:
-                    self.rect.x -= self.speed  # Move left to dodge
+    def predict_laser_path(self, laser):
+        # Predict where the laser will hit the ground (AI's vertical position)
+        laser_speed = laser.speed
+        laser_start_y = laser.rect.top
+        laser_start_x = laser.rect.centerx
+
+        # Calculate how far the laser will travel based on its speed
+        time_to_hit = (self.rect.top - laser_start_y) / laser_speed  # Time for laser to reach the AI
+        predicted_laser_x = laser_start_x + laser_speed * time_to_hit  # X position where laser will hit
+
+        return predicted_laser_x
 
     def shoot(self):
         # AI shoots lasers at the player
@@ -166,7 +172,7 @@ while running:
         if event.type == pygame.KEYDOWN and not game_over:
             if event.key == pygame.K_SPACE:
                 # Create a new laser when the player presses space
-                laser = Laser(player.rect.centerx, player.rect.top, 7, "up")
+                laser = Laser(player.rect.centerx, player.rect.top, 5, "up")  # Player laser speed is reduced
                 player_lasers.add(laser)
 
     if not game_over:
@@ -220,17 +226,19 @@ while running:
         screen.blit(restart_text, (width // 2 - restart_text.get_width() // 2, height // 2 + 50))
 
         if pygame.key.get_pressed()[pygame.K_RETURN]:
-            game_over = False
-            winner = None
-            player.rect.centerx = width // 2
-            player.rect.centery = height - 50
-            ai_spaceship.rect.centerx = width // 2
-            ai_spaceship.rect.centery = 50
-            score = 0
+            # Reset the game
+            player.rect.center = (width // 2, height - 50)
+            ai_spaceship.rect.center = (width // 2, 50)
             player_lasers.empty()
             ai_lasers.empty()
+            game_over = False
+            score = 0
 
-    pygame.display.update()
+    # Update display
+    pygame.display.flip()
+
+    # Set frame rate
     clock.tick(60)
 
+# Quit Pygame
 pygame.quit()
