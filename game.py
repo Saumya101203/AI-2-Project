@@ -66,11 +66,12 @@ class AISpaceship(Spaceship):
     def __init__(self, x, y):
         super().__init__(x, y, GREEN)
         self.speed = 0
-        self.fire_rate = 175  # AI fires more frequently (every 150 frames)
+        self.fire_rate = 175  # AI fires more frequently (every 175 frames)
         self.last_shot = 0
+        self.reaction_distance = 150 # Distance threshold for AI to start reacting
 
     def update(self, player_x, player_lasers):
-        # Update AI movement using fuzzy logic and avoid player lasers
+        # Update AI movement based on distance to the player
         distance = player_x - self.rect.centerx
         self.fuzzy_logic(distance)
 
@@ -90,33 +91,12 @@ class AISpaceship(Spaceship):
             self.rect.right = width
 
     def fuzzy_logic(self, distance):
-        # Define fuzzy sets for distance
-        distance_input = ctrl.Antecedent(np.arange(-width // 2, width // 2, 1), 'distance')
-        ai_speed_output = ctrl.Consequent(np.arange(-8, 9, 1), 'ai_speed')
-
-        distance_input['close'] = fuzz.trimf(distance_input.universe, [-width // 2, 0, 0])
-        distance_input['medium'] = fuzz.trimf(distance_input.universe, [0, 0, width // 2])
-        distance_input['far'] = fuzz.trimf(distance_input.universe, [0, width // 2, width // 2])
-
-        ai_speed_output['move_left'] = fuzz.trimf(ai_speed_output.universe, [-8, -3, 0])
-        ai_speed_output['no_move'] = fuzz.trimf(ai_speed_output.universe, [-2, 0, 2])
-        ai_speed_output['move_right'] = fuzz.trimf(ai_speed_output.universe, [0, 3, 8])
-
-        # Define fuzzy rules
-        rule1 = ctrl.Rule(distance_input['close'], ai_speed_output['move_left'])
-        rule2 = ctrl.Rule(distance_input['medium'], ai_speed_output['no_move'])
-        rule3 = ctrl.Rule(distance_input['far'], ai_speed_output['move_right'])
-
-        # Create control system and simulation
-        ai_control = ctrl.ControlSystem([rule1, rule2, rule3])
-        ai_simulation = ctrl.ControlSystemSimulation(ai_control)
-
-        # Input the distance value to the fuzzy system
-        ai_simulation.input['distance'] = distance
-        ai_simulation.compute()
-
-        # Get output and set the AI's speed
-        self.speed = ai_simulation.output['ai_speed']
+        # Adjust AI's speed based on distance to player
+        # Closer the AI is to the player, the faster it moves
+        if abs(distance) < self.reaction_distance:
+            self.speed = np.clip(distance // 10, -10, 10)
+        else:
+            self.speed = 0
 
     def dodge_lasers(self, player_lasers):
         # AI should dodge the lasers fired by the player
@@ -174,6 +154,15 @@ while running:
                 # Create a new laser when the player presses space
                 laser = Laser(player.rect.centerx, player.rect.top, 5, "up")  # Player laser speed is reduced
                 player_lasers.add(laser)
+        if event.type == pygame.KEYDOWN and game_over:
+            if event.key == pygame.K_RETURN:
+                # Restart the game by pressing Enter
+                game_over = False
+                winner = None
+                player.rect.center = (width // 2, height - 50)
+                ai_spaceship.rect.center = (width // 2, 50)
+                player_lasers.empty()
+                ai_lasers.empty()
 
     if not game_over:
         # Get player input
@@ -210,35 +199,23 @@ while running:
         # Draw all sprites
         screen.blit(player.image, player.rect)
         screen.blit(ai_spaceship.image, ai_spaceship.rect)
-        for laser in player_lasers:
-            screen.blit(laser.image, laser.rect)
-        for laser in ai_lasers:
-            screen.blit(laser.image, laser.rect)
+        player_lasers.draw(screen)
+        ai_lasers.draw(screen)
 
-    # Show score and game over message
+    # Draw game over screen
     if game_over:
         font = pygame.font.Font(None, 74)
-        text = font.render(f"Game Over: {winner} Wins!", True, WHITE)
-        screen.blit(text, (width // 2 - text.get_width() // 2, height // 2))
-
-        restart_font = pygame.font.Font(None, 36)
-        restart_text = restart_font.render("Press ENTER to restart", True, WHITE)
+        if winner == "player":
+            text = font.render("You Win!", True, WHITE)
+        elif winner == "ai":
+            text = font.render("AI Win", True, WHITE)
+        else:
+            text = font.render("Game Over", True, WHITE)
+        screen.blit(text, (width // 2 - text.get_width() // 2, height // 2 - text.get_height() // 2))
+        restart_text = font.render("Press Enter to Restart", True, WHITE)
         screen.blit(restart_text, (width // 2 - restart_text.get_width() // 2, height // 2 + 50))
 
-        if pygame.key.get_pressed()[pygame.K_RETURN]:
-            # Reset the game
-            player.rect.center = (width // 2, height - 50)
-            ai_spaceship.rect.center = (width // 2, 50)
-            player_lasers.empty()
-            ai_lasers.empty()
-            game_over = False
-            score = 0
-
-    # Update display
     pygame.display.flip()
-
-    # Set frame rate
     clock.tick(60)
 
-# Quit Pygame
 pygame.quit()
